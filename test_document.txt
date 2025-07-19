@@ -1,0 +1,99 @@
+CodeWhisperer Developer Onboarding Guide
+
+Welcome to CodeWhisperer! This document provides essential information for new developers joining the team.
+
+## Project Overview
+
+CodeWhisperer is an AI-powered developer onboarding assistant that helps new team members understand codebases, documentation, and internal processes. The system uses advanced language models with citation tracking to provide accurate, source-verified answers.
+
+## Key Features
+
+### 1. AI-Powered Chat Assistant
+- Ask questions about code, documentation, or processes
+- Receive answers with citations from the knowledge base
+- Filter responses by source type (code, documentation, slack, etc.)
+
+### 2. Knowledge Base Management
+- Admins can upload documents to the knowledge base
+- Support for multiple file formats (.txt, .md, .json, .py, .js, .ts, .jsx, .tsx, .html, .css, .sql)
+- Automatic processing and indexing for AI search
+
+### 3. Role-Based Access
+- **Admin**: Can upload documents, manage knowledge base, and create tasks
+- **Joinee**: Can access chat assistant and view assigned tasks
+
+### 4. Citation System
+- Every AI response includes citations from source documents
+- Perplexity-style source display with similarity scores
+- Direct links to source documents when available
+
+## Technical Architecture
+
+### Frontend (React + Vite)
+- Neo brutalism design theme with bold colors and sharp edges
+- Real-time chat interface with markdown rendering
+- Responsive design for desktop and mobile
+- Role-based navigation and access control
+
+### Backend (Flask + Python)
+- RESTful API for chat and document management
+- RAG (Retrieval-Augmented Generation) system using Gemini AI
+- Vector database for semantic search
+- Document processing and embedding generation
+
+### Database
+- SQLite for user management and query history
+- Vector storage for document embeddings
+- Support for document metadata and tags
+
+## Getting Started
+
+### For Admins
+1. Upload relevant documents to the knowledge base
+2. Tag documents appropriately for better search
+3. Monitor chat interactions and feedback
+4. Manage onboarding tasks for new team members
+
+### For Joinees
+1. Start with the chat assistant to ask questions
+2. Review assigned onboarding tasks
+3. Use the citation system to verify information sources
+4. Provide feedback on helpful/unhelpful responses
+
+## Best Practices
+
+### Document Upload
+- Use descriptive titles and tags
+- Include relevant metadata (file path, repository, author)
+- Break large documents into smaller, focused pieces
+- Use consistent formatting and structure
+
+### Chat Usage
+- Ask specific questions for better responses
+- Use the source filter to focus on particular content types
+- Review citations to understand information sources
+- Provide feedback to improve the system
+
+## Troubleshooting
+
+### Common Issues
+- **No API Key**: Set GEMINI_API_KEY environment variable
+- **Upload Failures**: Check file format and size limits
+- **Search Issues**: Ensure documents are properly tagged
+- **Citation Problems**: Verify document metadata is complete
+
+### Support
+For technical issues or questions about the system, contact the development team or check the internal documentation.
+
+## Future Enhancements
+
+Planned improvements include:
+- Advanced document versioning
+- Integration with external knowledge sources
+- Enhanced analytics and usage tracking
+- Mobile app development
+- Multi-language support
+
+---
+
+This document serves as the foundation for understanding and using CodeWhisperer effectively. Regular updates will be made as the system evolves.
