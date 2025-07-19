@@ -145,7 +145,64 @@ const KnowledgeUpload = ({ userRole }) => {
     }
   }
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    setUploadStatus(null)
+
+    try {
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus({ type: 'error', message: 'File size must be less than 10MB' })
+        return
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('title', uploadData.title || file.name.replace(/\.[^/.]+$/, ''))
+      formData.append('source_type', uploadData.source_type)
+      formData.append('author', uploadData.author || 'Unknown')
+      formData.append('tags', uploadData.tags.join(','))
+
+      // Upload file to backend
+      const response = await fetch('http://localhost:5002/api/data/upload/file', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setUploadStatus({ type: 'success', message: result.message })
+        
+        // Reset form
+        setUploadData({
+          title: '',
+          content: '',
+          source_type: 'documentation',
+          file_path: '',
+          repository: '',
+          author: '',
+          tags: []
+        })
+        
+        // Clear file input
+        e.target.value = ''
+      } else {
+        setUploadStatus({ type: 'error', message: result.error || 'File upload failed' })
+      }
+    } catch (error) {
+      console.error('File upload error:', error)
+      setUploadStatus({ type: 'error', message: 'File upload failed. Please try again.' })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleTextFileUpload = (e) => {
     const file = e.target.files?.[0]
     if (file) {
       const reader = new FileReader()
@@ -199,7 +256,7 @@ const KnowledgeUpload = ({ userRole }) => {
               <Input
                 id="file-upload"
                 type="file"
-                accept=".txt,.md,.json,.py,.js,.ts,.jsx,.tsx,.html,.css,.sql"
+                accept=".txt,.md,.json,.py,.js,.ts,.jsx,.tsx,.html,.css,.sql,.csv,.xml,.java,.cpp,.c,.h"
                 onChange={handleFileUpload}
                 className="neo-brutalism-input flex-1"
               />
@@ -209,7 +266,10 @@ const KnowledgeUpload = ({ userRole }) => {
               </Button>
             </div>
             <p className="text-sm text-gray-600 font-medium">
-              Supported formats: .txt, .md, .json, .py, .js, .ts, .jsx, .tsx, .html, .css, .sql
+              Supported formats: .txt, .md, .json, .py, .js, .ts, .jsx, .tsx, .html, .css, .sql, .csv, .xml, .java, .cpp, .c, .h
+            </p>
+            <p className="text-xs text-gray-500 font-medium">
+              Note: For PDF, Excel, and Word documents, please convert to text format first or use the text input below.
             </p>
           </div>
 

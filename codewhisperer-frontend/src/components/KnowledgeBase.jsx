@@ -52,12 +52,17 @@ const KnowledgeBase = () => {
   const loadDocuments = async () => {
     setIsLoading(true)
     try {
-      // Fetch documents from your API
+      // Fetch documents from backend API
       const response = await fetch('http://localhost:5002/api/data/documents')
       if (response.ok) {
         const data = await response.json()
         setDocuments(data.documents || [])
         calculateStats(data.documents || [])
+      } else {
+        console.error('Failed to load documents:', response.status)
+        // Fallback to mock data
+        setDocuments(mockDocuments)
+        calculateStats(mockDocuments)
       }
     } catch (error) {
       console.error('Error loading documents:', error)
@@ -151,6 +156,10 @@ const KnowledgeBase = () => {
   const truncateText = (text, maxLength = 150) => {
     if (!text) return ''
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+  }
+
+  const handleRefresh = () => {
+    loadDocuments()
   }
 
   // Mock data for demo

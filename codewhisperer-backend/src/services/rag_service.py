@@ -43,14 +43,39 @@ class RAGService:
                 source_type_filter=source_type_filter
             )
             
-            # Step 3: Prepare context from retrieved documents
-            context = self._prepare_context(similar_docs, max_context_length)
+            # Step 3: Check if we have relevant documents
+            if not similar_docs or len(similar_docs) == 0:
+                return {
+                    'response': "❌ **Sorry, I don't have access to this information.**\n\nI couldn't find any relevant documents in the knowledge base that match your question. Please try rephrasing your question or contact an administrator to add the relevant documentation to the knowledge base.",
+                    'sources': [],
+                    'processing_time': time.time() - start_time,
+                    'context_used': 0,
+                    'success': True,
+                    'no_relevant_docs': True
+                }
             
-            # Step 4: Generate response using LLM
-            response = self._generate_response(user_query, context, similar_docs)
+            # Step 4: Filter documents with minimum similarity threshold
+            min_similarity = 0.3  # Minimum similarity threshold
+            filtered_docs = [doc for doc in similar_docs if doc['similarity'] >= min_similarity]
             
-            # Step 5: Prepare sources information
-            sources = self._prepare_sources(similar_docs[:5])  # Top 5 sources
+            if not filtered_docs:
+                return {
+                    'response': "❌ **Sorry, I don't have access to this information.**\n\nThe documents I found are not relevant enough to provide an accurate answer. Please try rephrasing your question or contact an administrator to add more relevant documentation to the knowledge base.",
+                    'sources': [],
+                    'processing_time': time.time() - start_time,
+                    'context_used': 0,
+                    'success': True,
+                    'no_relevant_docs': True
+                }
+            
+            # Step 5: Prepare context from retrieved documents
+            context = self._prepare_context(filtered_docs, max_context_length)
+            
+            # Step 6: Generate response using LLM
+            response = self._generate_response(user_query, context, filtered_docs)
+            
+            # Step 7: Prepare sources information
+            sources = self._prepare_sources(filtered_docs[:5])  # Top 5 sources
             
             processing_time = time.time() - start_time
             
@@ -58,8 +83,9 @@ class RAGService:
                 'response': response,
                 'sources': sources,
                 'processing_time': processing_time,
-                'context_used': len(similar_docs),
-                'success': True
+                'context_used': len(filtered_docs),
+                'success': True,
+                'no_relevant_docs': False
             }
             
         except Exception as e:
@@ -114,29 +140,32 @@ class RAGService:
         """
         system_prompt = """You are CodeWhisperer, an AI-powered developer onboarding assistant. Your role is to help new developers understand codebases, documentation, and internal processes.
 
-IMPORTANT GUIDELINES:
-1. Always provide comprehensive, helpful answers based on the provided context
-2. Use markdown formatting for better readability
-3. When referencing information from sources, mention the source number (e.g., "According to Source 1..." or "As mentioned in Source 2...")
-4. Be conversational but professional
-5. If you're not sure about something, say so rather than guessing
-6. Use bullet points and code blocks when appropriate
-7. Always acknowledge the sources you're using in your response
+CRITICAL RULES - YOU MUST FOLLOW THESE:
+1. ONLY use information from the provided context. DO NOT use any external knowledge.
+2. If the context doesn't contain enough information to answer the question, say "I don't have enough information to answer this question based on the available documents."
+3. DO NOT make up or hallucinate any information not present in the context.
+4. Always cite specific sources when providing information (e.g., "According to Source 1..." or "As mentioned in Source 2...")
+5. If you're unsure about something, say so rather than guessing.
+6. Use markdown formatting for better readability.
+7. Be conversational but professional.
+8. Use bullet points and code blocks when appropriate.
 
 Available context from knowledge base:
 {context}
 
-Remember to cite your sources and be helpful!"""
+Remember: ONLY use the information provided in the context above. Do not use any external knowledge."""
 
-        user_prompt = f"""Based on the context provided above, please answer the following question:
+        user_prompt = f"""Based ONLY on the context provided above, please answer the following question:
 
 **Question:** {user_query}
 
-Please provide a comprehensive answer that helps the developer understand the topic. Make sure to:
-- Reference specific sources when providing information
+IMPORTANT: 
+- ONLY use information from the provided context
+- If the context doesn't contain enough information, say "I don't have enough information to answer this question based on the available documents"
+- DO NOT use any external knowledge or make up information
+- Always cite specific sources when providing information
 - Use clear, structured formatting
-- Be specific about which documents you're citing
-- Provide actionable insights when possible"""
+- Be specific about which documents you're citing"""
 
         try:
             if self.use_gemini:

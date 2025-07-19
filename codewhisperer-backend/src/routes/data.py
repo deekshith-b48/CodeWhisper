@@ -303,16 +303,32 @@ def get_data_stats():
     Get statistics about the knowledge base
     """
     try:
-        # Simple stats for now
-        return jsonify({
-            'total_documents': 0,
-            'total_chunks': 0,
-            'source_types': {},
-            'vector_database': {
+        # Get actual database statistics
+        total_docs = Document.query.count()
+        total_chunks = DocumentChunk.query.count()
+        
+        # Count by source type
+        source_stats = db.session.query(
+            Document.source_type,
+            db.func.count(Document.id)
+        ).group_by(Document.source_type).all()
+        
+        # Get vector database stats
+        try:
+            vector_stats = rag_service.get_knowledge_base_stats()
+        except Exception as e:
+            logger.warning(f"Could not get vector stats: {str(e)}")
+            vector_stats = {
                 'total_vectors': 0,
                 'source_types': {},
                 'storage_path': 'database/vectors.pkl'
-            },
+            }
+        
+        return jsonify({
+            'total_documents': total_docs,
+            'total_chunks': total_chunks,
+            'source_types': dict(source_stats),
+            'vector_database': vector_stats,
             'status': 'ready'
         })
         
@@ -342,12 +358,12 @@ def ingest_document():
         document = Document(
             title=metadata.get('title', 'Untitled Document'),
             source_type=metadata.get('source_type', 'documentation'),
-            content_preview=text[:500] + '...' if len(text) > 500 else text,
+            content=text,  # Store full content
             source_url=metadata.get('source_url', ''),
             file_path=metadata.get('file_path', ''),
             repository=metadata.get('repository', ''),
             author=metadata.get('author', ''),
-            metadata=json.dumps(metadata)
+            doc_metadata=json.dumps(metadata)
         )
         
         db.session.add(document)
@@ -365,3 +381,108 @@ def ingest_document():
     except Exception as e:
         logger.error(f"Error ingesting document: {str(e)}")
         return jsonify({'error': 'Failed to ingest document'}), 500
+
+@data_bp.route('/upload/file', methods=['POST'])
+def upload_file():
+    """
+    Upload and process a file into the knowledge base
+    """
+    try:
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Get metadata from form data
+        title = request.form.get('title', file.filename)
+        source_type = request.form.get('source_type', 'documentation')
+        author = request.form.get('author', 'Unknown')
+        tags = request.form.get('tags', '')
+        
+        # Check file extension
+        allowed_extensions = {
+            'txt', 'md', 'pdf', 'docx', 'doc', 'xlsx', 'xls', 
+            'csv', 'json', 'xml', 'html', 'htm', 'py', 'js', 
+            'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'sql'
+        }
+        
+        file_extension = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        if file_extension not in allowed_extensions:
+            return jsonify({
+                'error': f'File type not supported. Allowed types: {", ".join(allowed_extensions)}'
+            }), 400
+        
+        # Read file content based on type
+        content = ""
+        if file_extension in ['txt', 'md', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'sql']:
+            # Text files
+            content = file.read().decode('utf-8')
+        elif file_extension in ['json', 'xml', 'html', 'htm']:
+            # Structured text files
+            content = file.read().decode('utf-8')
+        elif file_extension == 'csv':
+            # CSV files
+            import csv
+            import io
+            csv_content = file.read().decode('utf-8')
+            csv_reader = csv.reader(io.StringIO(csv_content))
+            content = "\n".join([", ".join(row) for row in csv_reader])
+        elif file_extension in ['pdf', 'docx', 'doc', 'xlsx', 'xls']:
+            # Binary files - for now, return error suggesting text extraction
+            return jsonify({
+                'error': f'Binary file format ({file_extension}) detected. Please convert to text format or use the text input option.',
+                'supported_formats': list(allowed_extensions - {'pdf', 'docx', 'doc', 'xlsx', 'xls'})
+            }), 400
+        
+        if not content.strip():
+            return jsonify({'error': 'File appears to be empty'}), 400
+        
+        # Prepare metadata
+        metadata = {
+            'title': title,
+            'source_type': source_type,
+            'author': author,
+            'tags': tags,
+            'file_path': file.filename,
+            'file_extension': file_extension,
+            'upload_method': 'file_upload'
+        }
+        
+        # Add document to the RAG service
+        vector_id = rag_service.add_document(content, metadata)
+        
+        # Store in database
+        document = Document(
+            title=title,
+            source_type=source_type,
+            content=content,
+            source_url=f"file://{file.filename}",
+            file_path=file.filename,
+            author=author,
+            doc_metadata=json.dumps(metadata)
+        )
+        
+        db.session.add(document)
+        db.session.commit()
+        
+        logger.info(f"Successfully uploaded and processed file: {file.filename}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'File "{file.filename}" successfully uploaded and processed',
+            'vector_id': vector_id,
+            'document_id': document.id,
+            'file_info': {
+                'filename': file.filename,
+                'size': len(content),
+                'extension': file_extension
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': f'Failed to upload file: {str(e)}'}), 500
