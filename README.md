@@ -74,26 +74,38 @@ codewhisperer-backend/
 
 ## 🚀 Quick Start
 
-### **Prerequisites**
+### **Option 1: One-Click Setup (Recommended)**
+```bash
+# Clone the repository
+git clone https://github.com/deekshith-b48/CodeWhisper.git
+cd CodeWhisper
+
+# Run the quick start script
+./quick-start.sh
+```
+
+### **Option 2: Manual Setup**
+
+#### **Prerequisites**
 - Python 3.8+
 - Node.js 16+
 - pnpm (recommended) or npm
 
-### **1. Start the Backend**
+#### **1. Start the Backend**
 ```bash
 cd codewhisperer-backend
 pip install flask flask-cors Flask-SQLAlchemy requests numpy scikit-learn scipy joblib tqdm pydantic google-generativeai==0.1.0rc1
 python -m src.main
 ```
 
-### **2. Start the Frontend**
+#### **2. Start the Frontend**
 ```bash
 cd codewhisperer-frontend
 pnpm install
 pnpm dev
 ```
 
-### **3. Access the Application**
+#### **3. Access the Application**
 - **Frontend**: http://localhost:5176/
 - **Backend API**: http://localhost:5002/
 - **API Health Check**: http://localhost:5002/health
