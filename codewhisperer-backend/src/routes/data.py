@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from src.services.rag_service import RAGService
 from src.services.data_ingestion_service import DataIngestionService
+from src.services.file_processing_service import FileProcessingService
 from src.models.document import Document, DocumentChunk, db
 import logging
 import json
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 data_bp = Blueprint('data', __name__)
 rag_service = RAGService()
 ingestion_service = DataIngestionService()
+file_processor = FileProcessingService()
 
 @data_bp.route('/ingest/code', methods=['POST'])
 def ingest_code():
@@ -297,6 +299,35 @@ def delete_document(doc_id):
         db.session.rollback()
         return jsonify({'error': 'Internal server error'}), 500
 
+@data_bp.route('/supported-file-types', methods=['GET'])
+def get_supported_file_types():
+    """
+    Get list of supported file types for upload
+    """
+    try:
+        supported_extensions = file_processor.get_supported_extensions()
+        
+        # Group extensions by category
+        categories = {
+            'Text Files': ['txt', 'md', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'sql', 'html', 'htm', 'xml', 'json', 'yaml', 'yml', 'sh', 'dockerfile'],
+            'Documents': ['pdf', 'docx', 'doc'],
+            'Spreadsheets': ['csv', 'xlsx', 'xls']
+        }
+        
+        categorized_types = {}
+        for category, extensions in categories.items():
+            categorized_types[category] = [ext for ext in extensions if ext in supported_extensions]
+        
+        return jsonify({
+            'supported_extensions': supported_extensions,
+            'categorized_types': categorized_types,
+            'total_supported': len(supported_extensions)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting supported file types: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 @data_bp.route('/stats', methods=['GET'])
 def get_data_stats():
     """
@@ -402,85 +433,70 @@ def upload_file():
         author = request.form.get('author', 'Unknown')
         tags = request.form.get('tags', '')
         
-        # Check file extension
-        allowed_extensions = {
-            'txt', 'md', 'pdf', 'docx', 'doc', 'xlsx', 'xls', 
-            'csv', 'json', 'xml', 'html', 'htm', 'py', 'js', 
-            'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'sql'
-        }
-        
-        file_extension = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-        if file_extension not in allowed_extensions:
+        # Check if file can be processed
+        if not file_processor.can_process_file(file.filename):
+            supported_extensions = file_processor.get_supported_extensions()
             return jsonify({
-                'error': f'File type not supported. Allowed types: {", ".join(allowed_extensions)}'
+                'error': f'File type not supported. Supported types: {", ".join(supported_extensions)}'
             }), 400
         
-        # Read file content based on type
-        content = ""
-        if file_extension in ['txt', 'md', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'sql']:
-            # Text files
-            content = file.read().decode('utf-8')
-        elif file_extension in ['json', 'xml', 'html', 'htm']:
-            # Structured text files
-            content = file.read().decode('utf-8')
-        elif file_extension == 'csv':
-            # CSV files
-            import csv
-            import io
-            csv_content = file.read().decode('utf-8')
-            csv_reader = csv.reader(io.StringIO(csv_content))
-            content = "\n".join([", ".join(row) for row in csv_reader])
-        elif file_extension in ['pdf', 'docx', 'doc', 'xlsx', 'xls']:
-            # Binary files - for now, return error suggesting text extraction
-            return jsonify({
-                'error': f'Binary file format ({file_extension}) detected. Please convert to text format or use the text input option.',
-                'supported_formats': list(allowed_extensions - {'pdf', 'docx', 'doc', 'xlsx', 'xls'})
-            }), 400
+        # Read file content
+        file_content = file.read()
         
-        if not content.strip():
-            return jsonify({'error': 'File appears to be empty'}), 400
-        
-        # Prepare metadata
-        metadata = {
-            'title': title,
-            'source_type': source_type,
-            'author': author,
-            'tags': tags,
-            'file_path': file.filename,
-            'file_extension': file_extension,
-            'upload_method': 'file_upload'
-        }
-        
-        # Add document to the RAG service
-        vector_id = rag_service.add_document(content, metadata)
-        
-        # Store in database
-        document = Document(
-            title=title,
-            source_type=source_type,
-            content=content,
-            source_url=f"file://{file.filename}",
-            file_path=file.filename,
-            author=author,
-            doc_metadata=json.dumps(metadata)
-        )
-        
-        db.session.add(document)
-        db.session.commit()
-        
-        logger.info(f"Successfully uploaded and processed file: {file.filename}")
-        
-        return jsonify({
-            'success': True,
-            'message': f'File "{file.filename}" successfully uploaded and processed',
-            'vector_id': vector_id,
-            'document_id': document.id,
-            'file_info': {
-                'filename': file.filename,
-                'size': len(content),
-                'extension': file_extension
+        # Process the file using the file processing service
+        try:
+            metadata = {
+                'title': title,
+                'source_type': source_type,
+                'author': author,
+                'tags': tags,
+                'upload_method': 'file_upload'
             }
-        })
+            
+            content, file_metadata = file_processor.process_file(file_content, file.filename, metadata)
+            
+            if not content.strip():
+                return jsonify({'error': 'File appears to be empty or could not be processed'}), 400
+            
+            # Add document to the RAG service
+            vector_id = rag_service.add_document(content, file_metadata)
+            
+            # Store in database
+            document = Document(
+                title=title,
+                source_type=source_type,
+                content=content,
+                source_url=f"file://{file.filename}",
+                file_path=file.filename,
+                author=author,
+                doc_metadata=json.dumps(file_metadata)
+            )
+            
+            db.session.add(document)
+            db.session.commit()
+            
+            logger.info(f"Successfully uploaded and processed file: {file.filename}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'File "{file.filename}" successfully uploaded and processed',
+                'vector_id': vector_id,
+                'document_id': document.id,
+                'file_info': {
+                    'filename': file.filename,
+                    'size': len(content),
+                    'extension': file_metadata.get('file_extension', ''),
+                    'file_type': file_metadata.get('file_type', ''),
+                    'processing_method': file_metadata.get('processing_method', '')
+                }
+            })
+            
+        except Exception as processing_error:
+            logger.error(f"Error processing file {file.filename}: {str(processing_error)}")
+            return jsonify({
+                'error': f'Failed to process file: {str(processing_error)}',
+                'filename': file.filename
+            }), 500
         
     except Exception as e:
         logger.error(f"Error uploading file: {str(e)}")

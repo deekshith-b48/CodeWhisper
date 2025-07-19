@@ -46,7 +46,7 @@ class RAGService:
             # Step 3: Check if we have relevant documents
             if not similar_docs or len(similar_docs) == 0:
                 return {
-                    'response': "❌ **Sorry, I don't have access to this information.**\n\nI couldn't find any relevant documents in the knowledge base that match your question. Please try rephrasing your question or contact an administrator to add the relevant documentation to the knowledge base.",
+                    'response': "Sorry, I do not have access to this information.",
                     'sources': [],
                     'processing_time': time.time() - start_time,
                     'context_used': 0,
@@ -54,28 +54,14 @@ class RAGService:
                     'no_relevant_docs': True
                 }
             
-            # Step 4: Filter documents with minimum similarity threshold
-            min_similarity = 0.3  # Minimum similarity threshold
-            filtered_docs = [doc for doc in similar_docs if doc['similarity'] >= min_similarity]
+            # Step 4: Prepare context from retrieved documents
+            context = self._prepare_context(similar_docs, max_context_length)
             
-            if not filtered_docs:
-                return {
-                    'response': "❌ **Sorry, I don't have access to this information.**\n\nThe documents I found are not relevant enough to provide an accurate answer. Please try rephrasing your question or contact an administrator to add more relevant documentation to the knowledge base.",
-                    'sources': [],
-                    'processing_time': time.time() - start_time,
-                    'context_used': 0,
-                    'success': True,
-                    'no_relevant_docs': True
-                }
+            # Step 5: Generate response using LLM
+            response = self._generate_response(user_query, context, similar_docs)
             
-            # Step 5: Prepare context from retrieved documents
-            context = self._prepare_context(filtered_docs, max_context_length)
-            
-            # Step 6: Generate response using LLM
-            response = self._generate_response(user_query, context, filtered_docs)
-            
-            # Step 7: Prepare sources information
-            sources = self._prepare_sources(filtered_docs[:5])  # Top 5 sources
+            # Step 6: Prepare sources information
+            sources = self._prepare_sources(similar_docs[:5])  # Top 5 sources
             
             processing_time = time.time() - start_time
             
@@ -83,9 +69,8 @@ class RAGService:
                 'response': response,
                 'sources': sources,
                 'processing_time': processing_time,
-                'context_used': len(filtered_docs),
-                'success': True,
-                'no_relevant_docs': False
+                'context_used': len(similar_docs),
+                'success': True
             }
             
         except Exception as e:
@@ -140,32 +125,32 @@ class RAGService:
         """
         system_prompt = """You are CodeWhisperer, an AI-powered developer onboarding assistant. Your role is to help new developers understand codebases, documentation, and internal processes.
 
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. ONLY use information from the provided context. DO NOT use any external knowledge.
-2. If the context doesn't contain enough information to answer the question, say "I don't have enough information to answer this question based on the available documents."
-3. DO NOT make up or hallucinate any information not present in the context.
-4. Always cite specific sources when providing information (e.g., "According to Source 1..." or "As mentioned in Source 2...")
-5. If you're unsure about something, say so rather than guessing.
-6. Use markdown formatting for better readability.
-7. Be conversational but professional.
-8. Use bullet points and code blocks when appropriate.
+CRITICAL RULES:
+1. ONLY answer based on the provided context from the knowledge base
+2. If the context doesn't contain enough information to answer the question, say "Sorry, I do not have access to this information."
+3. DO NOT use any external knowledge or general information
+4. DO NOT make assumptions or provide information not present in the context
+5. Always provide comprehensive, helpful answers based on the provided context
+6. Use markdown formatting for better readability
+7. When referencing information from sources, mention the source number (e.g., "According to Source 1..." or "As mentioned in Source 2...")
+8. Be conversational but professional
+9. Use bullet points and code blocks when appropriate
+10. Always acknowledge the sources you're using in your response
 
 Available context from knowledge base:
 {context}
 
-Remember: ONLY use the information provided in the context above. Do not use any external knowledge."""
+Remember: Only use the information provided in the context above. If you cannot answer the question with this information, respond with "Sorry, I do not have access to this information."."""
 
-        user_prompt = f"""Based ONLY on the context provided above, please answer the following question:
+        user_prompt = f"""Based on the context provided above, please answer the following question:
 
 **Question:** {user_query}
 
-IMPORTANT: 
-- ONLY use information from the provided context
-- If the context doesn't contain enough information, say "I don't have enough information to answer this question based on the available documents"
-- DO NOT use any external knowledge or make up information
-- Always cite specific sources when providing information
+Please provide a comprehensive answer that helps the developer understand the topic. Make sure to:
+- Reference specific sources when providing information
 - Use clear, structured formatting
-- Be specific about which documents you're citing"""
+- Be specific about which documents you're citing
+- Provide actionable insights when possible"""
 
         try:
             if self.use_gemini:

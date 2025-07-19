@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +18,10 @@ import {
   Sparkles,
   Database,
   Plus,
-  Tag
+  Tag,
+  File,
+  FileSpreadsheet,
+  FileText as FileTextIcon
 } from 'lucide-react'
 import { addKnowledgeDocument, getCurrentUser } from '@/lib/hybridSupabase'
 
@@ -35,6 +38,8 @@ const KnowledgeUpload = ({ userRole }) => {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
   const [tagInput, setTagInput] = useState('')
+  const [supportedFileTypes, setSupportedFileTypes] = useState(null)
+  const [isLoadingFileTypes, setIsLoadingFileTypes] = useState(true)
 
   const sourceTypes = [
     { value: 'documentation', label: 'Documentation', icon: FileText },
@@ -42,6 +47,25 @@ const KnowledgeUpload = ({ userRole }) => {
     { value: 'slack', label: 'Slack Conversation', icon: MessageSquare },
     { value: 'other', label: 'Other', icon: Link }
   ]
+
+  // Load supported file types on component mount
+  useEffect(() => {
+    const loadSupportedFileTypes = async () => {
+      try {
+        const response = await fetch('http://localhost:5002/api/data/supported-file-types')
+        if (response.ok) {
+          const data = await response.json()
+          setSupportedFileTypes(data)
+        }
+      } catch (error) {
+        console.error('Error loading supported file types:', error)
+      } finally {
+        setIsLoadingFileTypes(false)
+      }
+    }
+
+    loadSupportedFileTypes()
+  }, [])
 
   const handleInputChange = (e) => {
     setUploadData(prev => ({
@@ -256,7 +280,7 @@ const KnowledgeUpload = ({ userRole }) => {
               <Input
                 id="file-upload"
                 type="file"
-                accept=".txt,.md,.json,.py,.js,.ts,.jsx,.tsx,.html,.css,.sql,.csv,.xml,.java,.cpp,.c,.h"
+                accept={supportedFileTypes?.supported_extensions?.map(ext => `.${ext}`).join(',') || ".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.py,.js,.ts,.jsx,.tsx,.html,.css,.sql,.xml,.java,.cpp,.c,.h"}
                 onChange={handleFileUpload}
                 className="neo-brutalism-input flex-1"
               />
@@ -265,12 +289,46 @@ const KnowledgeUpload = ({ userRole }) => {
                 Browse
               </Button>
             </div>
-            <p className="text-sm text-gray-600 font-medium">
-              Supported formats: .txt, .md, .json, .py, .js, .ts, .jsx, .tsx, .html, .css, .sql, .csv, .xml, .java, .cpp, .c, .h
-            </p>
-            <p className="text-xs text-gray-500 font-medium">
-              Note: For PDF, Excel, and Word documents, please convert to text format first or use the text input below.
-            </p>
+            
+            {/* Supported File Types Display */}
+            {isLoadingFileTypes ? (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading supported file types...
+              </div>
+            ) : supportedFileTypes ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 font-medium">
+                  Supported file formats:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {Object.entries(supportedFileTypes.categorized_types).map(([category, extensions]) => (
+                    <div key={category} className="neo-brutalism-card p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        {category === 'Text Files' && <FileTextIcon className="w-4 h-4 text-blue-600" />}
+                        {category === 'Documents' && <File className="w-4 h-4 text-green-600" />}
+                        {category === 'Spreadsheets' && <FileSpreadsheet className="w-4 h-4 text-orange-600" />}
+                        <span className="font-bold text-sm">{category}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {extensions.map(ext => (
+                          <span key={ext} className="text-xs bg-gray-100 px-2 py-1 rounded border-2 border-black font-mono">
+                            .{ext}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 font-medium">
+                  Total supported formats: {supportedFileTypes.total_supported}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 font-medium">
+                Supported formats: .txt, .md, .pdf, .docx, .xlsx, .csv, .json, .py, .js, .ts, .jsx, .tsx, .html, .css, .sql, .xml, .java, .cpp, .c, .h
+              </p>
+            )}
           </div>
 
           {/* Document Details */}
@@ -450,10 +508,12 @@ const KnowledgeUpload = ({ userRole }) => {
           <div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">How it works</h3>
             <ul className="space-y-2 text-gray-700 font-medium">
-              <li>• Uploaded documents are processed and added to the AI knowledge base</li>
-              <li>• The AI will cite these documents when answering questions</li>
+              <li>• Upload documents in various formats (PDF, DOCX, XLS, CSV, code files, etc.)</li>
+              <li>• Documents are automatically processed and added to the AI knowledge base</li>
+              <li>• The AI will ONLY answer based on uploaded knowledge base content</li>
+              <li>• If information is not in the knowledge base, AI responds: "Sorry, I do not have access to this information."</li>
+              <li>• All responses include citations to source documents</li>
               <li>• Both admins and joinees can access the knowledge through chat</li>
-              <li>• Documents are searchable and will appear in chat responses with citations</li>
             </ul>
           </div>
         </div>
